@@ -1,0 +1,7 @@
+angle,model,n_patterns,n_vis,found_vis,found_not_vis,n_pred,false,truly_false,recall_vis,precision
+1.0,fine-tuned,15,2363,1451,34,1505,20,5,0.614,0.987
+1.0,zero-shot general,15,2363,1827,113,2153,213,119,0.773,0.901
+2.0,fine-tuned,15,2319,1468,94,1585,23,4,0.633,0.985
+2.0,zero-shot general,15,2319,635,37,748,76,68,0.274,0.898
+4.0,fine-tuned,15,2086,849,53,934,32,15,0.407,0.966
+4.0,zero-shot general,15,2086,326,10,406,70,21,0.156,0.828

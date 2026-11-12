@@ -1,0 +1,7 @@
+material,model,n_patterns,n_vis,found_vis,found_not_vis,n_pred,false,truly_false,recall_vis,precision
+BW,fine-tuned,15,3218,1818,56,1874,0,0,0.565,1.0
+BW,zero-shot general,15,3218,1480,48,1651,123,65,0.46,0.925
+Co3(O2F)2,fine-tuned,15,1978,955,16,1011,40,21,0.483,0.96
+Co3(O2F)2,zero-shot general,15,1978,689,30,842,123,67,0.348,0.854
+SiO2,fine-tuned,15,1572,995,109,1139,35,3,0.633,0.969
+SiO2,zero-shot general,15,1572,619,82,814,113,76,0.394,0.861

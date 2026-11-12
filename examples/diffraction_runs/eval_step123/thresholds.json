@@ -1,0 +1,59 @@
+{
+  "ft_V": {
+    "tuned": 0.572,
+    "rule": 0.81,
+    "val_precision_at_rule": 0.951,
+    "val_precision_at_tuned": 0.909,
+    "log_scale": 1000.0,
+    "seed": 0,
+    "val": [
+      "Ba2Mn3O8",
+      "LiMnCrO4",
+      "Pr4Sb3",
+      "SiI3"
+    ],
+    "test": [
+      "BW",
+      "Co3(O2F)2",
+      "SiO2"
+    ]
+  },
+  "ft_V_seed1": {
+    "tuned": 0.6279999999999999,
+    "rule": 0.83,
+    "val_precision_at_rule": 0.953,
+    "val_precision_at_tuned": 0.917,
+    "log_scale": 1000.0,
+    "seed": 1,
+    "val": [
+      "Ba2Mn3O8",
+      "LiMnCrO4",
+      "Pr4Sb3",
+      "SiI3"
+    ],
+    "test": [
+      "BW",
+      "Co3(O2F)2",
+      "SiO2"
+    ]
+  },
+  "ft_V_log1e4": {
+    "tuned": 0.5399999999999999,
+    "rule": 0.88,
+    "val_precision_at_rule": 0.95,
+    "val_precision_at_tuned": 0.898,
+    "log_scale": 10000.0,
+    "seed": 0,
+    "val": [
+      "Ba2Mn3O8",
+      "LiMnCrO4",
+      "Pr4Sb3",
+      "SiI3"
+    ],
+    "test": [
+      "BW",
+      "Co3(O2F)2",
+      "SiO2"
+    ]
+  }
+}

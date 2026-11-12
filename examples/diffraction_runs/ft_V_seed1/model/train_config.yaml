@@ -1,0 +1,16 @@
+batch_size: 4
+crop_size: 256
+crop_size_depth: 32
+early_stopping_patience: 10
+finetuned_from: general
+flow_loss_f: l1
+heatmap_loss_f: bce
+loss_levels: null
+lr: 0.0003
+lr_reduce_patience: 10
+num_epochs: 30
+num_train_samples: null
+optimize_threshold: true
+optimizer: adamw
+pos_weight: 10.0
+smart_crop: true
