@@ -1,0 +1,75 @@
+{
+  "train": [
+    "Al(NiO2)3",
+    "AlCo3",
+    "AlPO4",
+    "AlPt2",
+    "CoSbS",
+    "ErCo5Si3",
+    "FeB",
+    "HoTe3",
+    "Li7Mn2(CoO4)3",
+    "Mg2B4H22C2S",
+    "Mn6O5F7",
+    "Na2O",
+    "NbTe4Ir",
+    "Nd4Rh6Pb19",
+    "RbCaMg6",
+    "SbPbO3",
+    "U3Bi4Rh3",
+    "ZrSn3"
+  ],
+  "val": [
+    "Ba2Mn3O8",
+    "LiMnCrO4",
+    "Pr4Sb3",
+    "SiI3"
+  ],
+  "test": [
+    "BW",
+    "Co3(O2F)2",
+    "SiO2"
+  ],
+  "level": "material",
+  "args": {
+    "root": [
+      "/mnt/data/DINOV3/dinov3/dummy_data/selected_folders",
+      "/mnt/data/DINOV3/dinov3/dummy_data"
+    ],
+    "out": "diffraction_runs/ft_V",
+    "materials": null,
+    "angles": null,
+    "thicknesses": null,
+    "test_materials": [
+      "BW",
+      "Co3(O2F)2",
+      "SiO2"
+    ],
+    "val_materials": null,
+    "seed": 0,
+    "input": "log",
+    "log_scale": 1000,
+    "targets": "visible",
+    "eval_thicknesses": [
+      20.0,
+      40.0,
+      100.0,
+      200.0,
+      500.0
+    ],
+    "vis_box": 3,
+    "base": "general",
+    "from_scratch": false,
+    "sigma": 1.0,
+    "epochs": 30,
+    "lr": 0.0003,
+    "batch_size": 4,
+    "crop_size": 256,
+    "patience": 10,
+    "min_distance": 3,
+    "device": "cuda",
+    "num_workers": 0,
+    "logger": "csv",
+    "eval_only": false
+  }
+}
