@@ -103,6 +103,24 @@ def ground_truth(img, gt, r, vis_box):
     return dict(beam=beam, points=points, visible=visible, reachable=reachable, floor=floor, weak=weak, spacing=spacing)
 
 
+def local_contrast(img, points, spacing, window=2.0, pct=20, floor=None):
+    """3 x 3 maximum of dataMeas at each point divided by the local background: the pct-th percentile of dataMeas
+    in a square window of half-width window * spacing around the point. Zero backgrounds are replaced by
+    floor * 1e-3 so that points on a dark background get a large (finite) contrast."""
+    points = np.asarray(points, int).reshape(-1, 2)
+    hw = max(1, int(round(window * spacing)))
+    peak = maximum_filter(img, size=3)[points[:, 0], points[:, 1]]
+    bg = np.array([np.percentile(img[max(0, y - hw):y + hw + 1, max(0, x - hw):x + hw + 1], pct) for y, x in points])
+    tiny = (img.max() * FLOOR_REL if floor is None else floor) * 1e-3
+    return peak / np.maximum(bg, tiny)
+
+
+def visible_local(img, g, k=10, window=2.0, pct=20):
+    """Local-contrast visibility (section 6 of 5_diffraction_finetune.ipynb): the global floor rule AND
+    3 x 3 maximum >= k x local background. Not used by the default pipeline."""
+    return g["visible"] & (local_contrast(img, g["points"], g["spacing"], window, pct, g["floor"]) >= k)
+
+
 def choose_pipeline(select, angle, eta):
     if select == "angle":
         return BY_ANGLE[min(BY_ANGLE, key=lambda a: abs(a - angle))]
