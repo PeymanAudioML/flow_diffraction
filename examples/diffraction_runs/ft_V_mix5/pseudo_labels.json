@@ -1,0 +1,14 @@
+{
+ "teacher": "diffraction_runs/ft_V_mix2",
+ "prob_thresh": 0.55,
+ "n_added": 31386,
+ "n_labels": 895124,
+ "per_material": {
+  "Ag": 2899,
+  "Au": 3716,
+  "Au+Ag": 2531,
+  "CoO": 13581,
+  "Pd": 5135,
+  "ZnO": 3524
+ }
+}
