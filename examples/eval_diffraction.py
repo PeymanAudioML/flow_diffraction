@@ -64,9 +64,19 @@ def found_mask(g, pred):
     return found
 
 
-def predict_low(model, pattern, log_scale):
+def model_input(pattern, kind, log_scale):
+    """The run's input, as built by finetune_diffraction.make_input: the log image, or for --input ring the
+    shared per-angle pipeline (log image at 1 mrad, ring correlation at 2 and 4 mrad, no FFT padding)."""
+    img, probe, angle = pattern[3], pattern[4], pattern[1]
+    if kind == "log":
+        return bd.spotiflow_input(img, probe, "log", log_scale=log_scale).astype(np.float32)
+    method, kw = bd.choose_pipeline("angle", angle, None)
+    return bd.spotiflow_input(img, probe, method, pad=False, **kw).astype(np.float32)
+
+
+def predict_low(model, pattern, log_scale, kind="log"):
     """One prediction at threshold 0.05: points and their probabilities."""
-    x = bd.spotiflow_input(pattern[3], pattern[4], "log", log_scale=log_scale).astype(np.float32)
+    x = model_input(pattern, kind, log_scale)
     p, d = model.predict(x, prob_thresh=0.05, min_distance=3, subpix=True, verbose=False, device="cuda")
     return p, d.prob
 
@@ -97,6 +107,7 @@ def main():
     for run in map(Path, args.runs):
         split = json.loads((run / "split.json").read_text())
         roots, log_scale = split["args"]["root"], float(split["args"]["log_scale"])
+        kind = split["args"].get("input", "log")
         tuned = yaml.safe_load((run / "model" / "thresholds.yaml").read_text())["prob_thresh_best"][0]
         model = Spotiflow.from_folder(str(run / "model"), map_location="cuda")
         key_val, key_test = ("val", tuple(split["val"])), ("test", tuple(split["test"]))
@@ -106,7 +117,7 @@ def main():
             cache[key_test] = load(roots, split["test"], args.eval_thicknesses)
 
         # 1. threshold rule on the validation materials
-        val_preds = [predict_low(model, pt, log_scale) for pt in cache[key_val]]
+        val_preds = [predict_low(model, pt, log_scale, kind) for pt in cache[key_val]]
         for t in THRESHOLDS:
             for pt, (pr, prob) in zip(cache[key_val], val_preds):
                 sweep_rows.append(dict(run=run.name, threshold=t, angle=pt[1], **bd.score(pt[5], pr[prob >= t])))
@@ -117,13 +128,13 @@ def main():
         chosen[run.name] = dict(tuned=float(tuned), rule=rule, val_precision_at_rule=round(float(val_prec.get(rule, np.nan)), 3),
                                 val_precision_at_tuned=round(float(val_prec.loc[np.isclose(val_prec.index, round(tuned, 2))].iloc[0]), 3)
                                 if np.isclose(val_prec.index, round(tuned, 2)).any() else None,
-                                log_scale=log_scale, seed=split["args"]["seed"], val=split["val"], test=split["test"])
+                                log_scale=log_scale, input=kind, seed=split["args"]["seed"], val=split["val"], test=split["test"])
         print(f"{run.name}: tuned threshold {tuned:.3f}, rule threshold {rule} "
               f"(lowest with validation precision >= {args.min_precision})", flush=True)
 
         # 2. test materials at both thresholds, pooled by angle and by brightness band
         for pt in cache[key_test]:
-            pr, prob = predict_low(model, pt, log_scale)
+            pr, prob = predict_low(model, pt, log_scale, kind)
             g = pt[5]
             for name, t in (("tuned", tuned), ("rule", rule)):
                 keep = pr[prob >= t]
