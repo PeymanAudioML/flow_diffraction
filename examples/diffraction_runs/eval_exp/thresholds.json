@@ -1,0 +1,69 @@
+{
+  "V": {
+    "exp": 0.572,
+    "exp_rule": "spotiflow optimize_threshold at the end of training (thresholds.yaml)",
+    "sim": 0.572,
+    "sim_rule": "own threshold"
+  },
+  "V_exp": {
+    "exp": 0.396,
+    "exp_rule": "spotiflow optimize_threshold at the end of training (thresholds.yaml)",
+    "sim": 0.396,
+    "sim_rule": "own threshold (no simulation threshold)"
+  },
+  "V_mix": {
+    "exp": 0.308,
+    "exp_rule": "spotiflow optimize_threshold at the end of training (thresholds.yaml)",
+    "sim": 0.68,
+    "sim_rule": "lowest threshold with ft_V's pooled precision on the simulation validation materials"
+  },
+  "V_mix2": {
+    "exp": 0.47,
+    "exp_rule": "F1 on the experimental validation patterns (whole patterns), set by eval_experimental.py",
+    "sim": 0.6,
+    "sim_rule": "lowest threshold with ft_V's pooled precision on the simulation train materials (set by eval_experimental.py)",
+    "val_f1_by_threshold": {
+      "0.30": 0.6344,
+      "0.31": 0.6428,
+      "0.32": 0.651,
+      "0.33": 0.6591,
+      "0.34": 0.6665,
+      "0.35": 0.6748,
+      "0.36": 0.6816,
+      "0.37": 0.6889,
+      "0.38": 0.6956,
+      "0.39": 0.702,
+      "0.40": 0.7079,
+      "0.41": 0.7135,
+      "0.42": 0.718,
+      "0.43": 0.7213,
+      "0.44": 0.7247,
+      "0.45": 0.7271,
+      "0.46": 0.7284,
+      "0.47": 0.7287,
+      "0.48": 0.7286,
+      "0.49": 0.7256,
+      "0.50": 0.7134,
+      "0.51": 0.6851,
+      "0.52": 0.6658,
+      "0.53": 0.6496,
+      "0.54": 0.6349,
+      "0.55": 0.6186,
+      "0.56": 0.6021,
+      "0.57": 0.585,
+      "0.58": 0.5671,
+      "0.59": 0.5477,
+      "0.60": 0.5284,
+      "0.61": 0.5066,
+      "0.62": 0.4841,
+      "0.63": 0.4595,
+      "0.64": 0.4351,
+      "0.65": 0.4085,
+      "0.66": 0.383,
+      "0.67": 0.3554,
+      "0.68": 0.3255,
+      "0.69": 0.2951,
+      "0.70": 0.2631
+    }
+  }
+}

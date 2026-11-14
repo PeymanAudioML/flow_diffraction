@@ -1,0 +1,6 @@
+{
+  "prob_thresh_sim": 0.68,
+  "rule": "lowest threshold with ft_V's pooled precision on the simulation validation materials",
+  "target_precision": 0.91,
+  "val_precision": 0.913
+}

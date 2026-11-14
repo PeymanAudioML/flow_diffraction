@@ -1,0 +1,16 @@
+batch_size: 4
+crop_size: 256
+crop_size_depth: 32
+early_stopping_patience: 0
+finetuned_from: /home/ubuntu/spotiflow/examples/diffraction_runs/ft_V
+flow_loss_f: l1
+heatmap_loss_f: bce
+loss_levels: null
+lr: 0.0001
+lr_reduce_patience: 10
+num_epochs: 10
+num_train_samples: null
+optimize_threshold: true
+optimizer: adamw
+pos_weight: 10.0
+smart_crop: true
