@@ -17,9 +17,14 @@ Two stages: a coarse grid (thresholds in steps of 0.05, all FCU-Net settings and
 steps of 0.01 (V_mix2 alone 0.05-0.65; AND/OR 0.05-0.45 at the chosen FCU-Net cutoff and its two grid neighbours).
 The final choice uses the fine stage for V_mix2 and the combinations, the coarse one for FCU-Net alone.
 
-    python score_fcunet_sim93.py   # -> sim93_eval/fcunet_sweep.csv.gz, fcunet_sweep_fine.csv.gz, fcunet_best.csv
+Weight of a truly false detection (environment FC_W, default 1): settings are chosen by
+(found - FC_W * truly false) / visible; FC_W = 1 is net found. Output files get the suffix _w<FC_W> unless FC_W = 1.
+
+    python score_fcunet_sim93.py           # -> sim93_eval/fcunet_sweep.csv.gz, fcunet_sweep_fine.csv.gz, fcunet_best.csv
+    FC_W=2 python score_fcunet_sim93.py    # -> ..._fine_w2.csv.gz, fcunet_best_w2.csv, fcunet_final_patterns_w2.csv
 """
 import json
+import os
 from multiprocessing import Pool
 
 import numpy as np
@@ -33,7 +38,9 @@ from postproc_sim93 import COLS, E, R, load, pooled
 CUTS = [0.002, 0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.12]
 TS = np.round(np.arange(0.10, 0.651, 0.05), 2)
 FINE_T = np.round(np.arange(0.05, 0.651, 0.01), 2)
-FINE_T_COMBO = np.round(np.arange(0.05, 0.451, 0.01), 2)
+FINE_T_COMBO = np.round(np.arange(0.05, 0.651, 0.01), 2)
+W = float(os.environ.get("FC_W", 1))
+SUF = "" if W == 1 else f"_w{W:g}"
 MODEL = "V_mix2"
 SETS = [f"s{s}_m{m}" for s in (0, 0.5) for m in (2, 4, 6)]
 VAL, TEST, OLD = "new validation (31)", "new test (62)", "old test"
@@ -113,7 +120,8 @@ def run(meta, od, vis, best_set=None, final=None, fine=None):
 def choose(sw):
     keys = ["method", "setting", "cut", "t"]
     v = sw[sw.part == VAL].fillna({"cut": -1, "t": -1}).groupby(keys).apply(pooled)
-    best = v.reset_index().loc[lambda d: d.groupby("method").net_found.idxmax()]
+    v = v.assign(score=(v.found - W * v.truly_false) / v.visible)
+    best = v.reset_index().loc[lambda d: d.groupby("method").score.idxmax()]
     return {_key(r.method, r.setting, r.cut if r.cut >= 0 else np.nan, r.t if r.t >= 0 else np.nan) for r in best.itertuples()}
 
 
@@ -132,8 +140,11 @@ def main():
         best_set = next(k for m, k, c, t in choose(sw) if m == "fcunet")
         sw = pd.concat([sw, run(meta, od, S["vis_box"], best_set=best_set)])
         sw.to_csv(E / "fcunet_sweep.csv.gz", index=False)
-    coarse = choose(sw)
-    best_set = next(k for m, k, c, t in coarse if m == "fcunet")
+    best_set = next(k for m, k, c, t in choose(sw[sw.method == "fcunet"]) if m == "fcunet")
+    if not ((sw.method == MODEL + " AND fc") & (sw.setting == best_set)).any():
+        sw = pd.concat([sw, run(meta, od, S["vis_box"], best_set=best_set)])
+        sw.to_csv(E / "fcunet_sweep.csv.gz", index=False)
+    coarse = choose(sw[(sw.method.isin(["fcunet", MODEL])) | (sw.setting == best_set)])
     print("coarse:", sorted(coarse), flush=True)
 
     # fine stage: V_mix2 threshold in steps of 0.01, combinations at the chosen cutoff and its grid neighbours
@@ -142,19 +153,19 @@ def main():
         if m.startswith(MODEL + " "):
             j = CUTS.index(c)
             fine[m] = CUTS[max(0, j - 1): j + 2]
-    if (E / "fcunet_sweep_fine.csv.gz").exists():
-        sf = pd.read_csv(E / "fcunet_sweep_fine.csv.gz", keep_default_na=False, na_values=[""],
+    if (E / f"fcunet_sweep_fine{SUF}.csv.gz").exists():
+        sf = pd.read_csv(E / f"fcunet_sweep_fine{SUF}.csv.gz", keep_default_na=False, na_values=[""],
                          dtype={"setting": str}).fillna({"setting": ""})
     else:
         sf = run(meta, od, S["vis_box"], best_set=best_set, fine=fine)
-        sf.to_csv(E / "fcunet_sweep_fine.csv.gz", index=False)
+        sf.to_csv(E / f"fcunet_sweep_fine{SUF}.csv.gz", index=False)
     chosen = {x for x in coarse if x[0] == "fcunet"} | {x for x in choose(sf)}
     print("chosen:", sorted(chosen), flush=True)
 
     # final pass at the chosen settings, with intensity-weighted accuracy (mean over patterns)
     fin = pd.concat([run(meta, od, S["vis_box"], best_set=None, final=chosen),
                      run(meta, od, S["vis_box"], best_set=best_set, final=chosen, fine=fine)])
-    fin.to_csv(E / "fcunet_final_patterns.csv", index=False)
+    fin.to_csv(E / f"fcunet_final_patterns{SUF}.csv", index=False)
     out = []
     for (m, k, c, t), d in fin.groupby(["method", "setting", "cut", "t"], dropna=False):
         for part in (VAL, TEST, OLD):
@@ -162,7 +173,7 @@ def main():
             out.append(dict(method=m, setting=k, cut=c, t=t, part=part, **pooled(dp).to_dict(),
                             acc_pots=dp.acc_pots.mean(), acc_img=dp.acc_img.mean()))
     b = pd.DataFrame(out)
-    b.to_csv(E / "fcunet_best.csv", index=False)
+    b.to_csv(E / f"fcunet_best{SUF}.csv", index=False)
     pd.set_option("display.width", 250)
     for part in (TEST, OLD):
         print(f"\n== {part}")

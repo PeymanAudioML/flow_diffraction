@@ -13,9 +13,11 @@ detections within 2.5 px of the 2D lattice fitted to the confident detections) o
 and scores them, with V_mix2 at 0.23, on the 62 new test materials and the old test (with intensity-weighted
 accuracy).
 
-    python tradeoff_vmix2_sim93.py   # -> sim93_eval/tradeoff_sweep.csv.gz, tradeoff_best.csv
+    python tradeoff_vmix2_sim93.py          # -> sim93_eval/tradeoff_sweep.csv.gz, tradeoff_best.csv
+    FC_W=2 python tradeoff_vmix2_sim93.py   # truly false counts twice: reference V_mix2 at 0.46 -> tradeoff_best_w2.csv
 """
 import json
+import os
 from multiprocessing import Pool
 
 import numpy as np
@@ -25,22 +27,25 @@ import benchmark_diffraction as bd
 from intensity_accuracy import weighted_accuracy
 from postproc_sim93 import COLS, E, R, apply, load, pooled
 
-MODEL, REF_T = "V_mix2", 0.23
-TS = np.round(np.arange(0.05, 0.451, 0.01), 2)
+W = float(os.environ.get("FC_W", 1))          # weight of a truly false detection in the goal score
+SUF = "" if W == 1 else f"_w{W:g}"
+MODEL = "V_mix2"
+REF_T = {1.0: 0.23, 2.0: 0.46}[W]            # V_mix2's threshold chosen with this weight (score_fcunet_sim93.py)
+TS = np.round(np.arange(0.05, 0.651, 0.01), 2)
 VARIANTS = ["base", "lattice2.5"]
 VAL, TEST, OLD = "new validation (31)", "new test (62)", "old test"
 
 
 def work(args):
-    i, r, od, vis_box, final = args
+    i, r, od, vis_box, final, ts = args
     img, pots, probe = load(r, od)
     rad = bd.disk_radius(probe)
     g = bd.ground_truth(img, pots, rad, vis_box)
     P = np.load(E / "predictions.npz")
     pts, prob = P[f"{MODEL}_{i}_pts"], P[f"{MODEL}_{i}_prob"]
     rows = []
-    for v, ts in (final.items() if final else ((v, TS) for v in VARIANTS)):
-        for t in ts:
+    for v, tl in (final.items() if final else ((v, ts) for v in VARIANTS)):
+        for t in tl:
             p, _ = apply(v, pts[prob >= t], prob[prob >= t], g["beam"], None, rad)
             s = bd.score(g, p)
             row = dict(pattern=i, variant=v, threshold=t, **{c: s[c] for c in COLS})
@@ -51,8 +56,8 @@ def work(args):
     return rows
 
 
-def run(meta, od, vis, final=None):
-    jobs = [(i, r, od, vis, final) for i, r in meta.iterrows()]
+def run(meta, od, vis, final=None, ts=TS):
+    jobs = [(i, r, od, vis, final, ts) for i, r in meta.iterrows()]
     with Pool(4) as pool:
         rows = [x for part in pool.imap_unordered(work, jobs, chunksize=4) for x in part]
     return pd.DataFrame(rows).join(meta[["part", "angle", "thickness"]], on="pattern")
@@ -65,17 +70,18 @@ def main():
     meta["part"] = np.where(meta.material.isin(split["val"]), VAL, np.where(meta.material.isin(split["test"]), TEST, OLD))
     od = {f.name: f for f in bd.find_material_folders(json.loads((R / "ft_V/split.json").read_text())["args"]["root"])}
 
-    if (E / "tradeoff_sweep.csv.gz").exists():
-        sw = pd.read_csv(E / "tradeoff_sweep.csv.gz")
-    else:
-        sw = run(meta, od, S["vis_box"])
+    sw = pd.read_csv(E / "tradeoff_sweep.csv.gz") if (E / "tradeoff_sweep.csv.gz").exists() else None
+    missing = [t for t in TS if sw is None or not np.isclose(sw.threshold, t).any()]
+    if missing:                                    # extend the sweep to new thresholds
+        new = run(meta, od, S["vis_box"], final=None, ts=missing)
+        sw = new if sw is None else pd.concat([sw, new])
         sw.to_csv(E / "tradeoff_sweep.csv.gz", index=False)
     v = sw[sw.part == VAL].groupby(["variant", "threshold"])[list(COLS)].sum()
     ref_false = v.loc[("base", REF_T), "truly_false"]
     lat = v.loc["lattice2.5"]
     same = float(lat[lat.truly_false <= ref_false].index.min())
-    goal = float(((lat.found_vis - lat.truly_false) / lat.n_vis).idxmax())
-    rules = {("base", REF_T): "V_mix2 (goal threshold)", ("lattice2.5", same): "V_mix2 + lattice, same-false rule",
+    goal = float(((lat.found_vis - W * lat.truly_false) / lat.n_vis).idxmax())
+    rules = {("base", REF_T): f"V_mix2 (threshold {REF_T:.2f})", ("lattice2.5", same): "V_mix2 + lattice, same-false rule",
              ("lattice2.5", goal): "V_mix2 + lattice, goal rule"}
     print("lattice thresholds: same-false", same, "goal", goal, flush=True)
 
@@ -91,7 +97,7 @@ def main():
             out.append(dict(rule=name, variant=var, threshold=t, part=part, **pooled(dp).to_dict(),
                             acc_pots=dp.acc_pots.mean(), acc_img=dp.acc_img.mean()))
     b = pd.DataFrame(out)
-    b.to_csv(E / "tradeoff_best.csv", index=False)
+    b.to_csv(E / f"tradeoff_best{SUF}.csv", index=False)
     pd.set_option("display.width", 250)
     print(b.set_index(["part", "rule"])[["threshold", "recall", "found", "truly_false", "truly_false_share", "net_found",
                                          "f1", "acc_pots", "acc_img"]].round(3).to_string())
