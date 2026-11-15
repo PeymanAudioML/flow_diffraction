@@ -13,7 +13,11 @@ Methods
     V_mix2 OR fc   V_mix2 at threshold t plus FCU-Net peaks (cutoff c) more than 3 px from every V_mix2 detection;
                    tuned: t, c
 
-    python score_fcunet_sim93.py   # -> sim93_eval/fcunet_sweep.csv.gz, fcunet_best.csv
+Two stages: a coarse grid (thresholds in steps of 0.05, all FCU-Net settings and cutoffs), then the V_mix2 threshold in
+steps of 0.01 (V_mix2 alone 0.05-0.65; AND/OR 0.05-0.45 at the chosen FCU-Net cutoff and its two grid neighbours).
+The final choice uses the fine stage for V_mix2 and the combinations, the coarse one for FCU-Net alone.
+
+    python score_fcunet_sim93.py   # -> sim93_eval/fcunet_sweep.csv.gz, fcunet_sweep_fine.csv.gz, fcunet_best.csv
 """
 import json
 from multiprocessing import Pool
@@ -28,6 +32,8 @@ from postproc_sim93 import COLS, E, R, load, pooled
 
 CUTS = [0.002, 0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.12]
 TS = np.round(np.arange(0.10, 0.651, 0.05), 2)
+FINE_T = np.round(np.arange(0.05, 0.651, 0.01), 2)
+FINE_T_COMBO = np.round(np.arange(0.05, 0.451, 0.01), 2)
 MODEL = "V_mix2"
 SETS = [f"s{s}_m{m}" for s in (0, 0.5) for m in (2, 4, 6)]
 VAL, TEST, OLD = "new validation (31)", "new test (62)", "old test"
@@ -45,10 +51,22 @@ def _key(m, k, c, t):
     return (m, k, -1.0 if pd.isna(c) else round(float(c), 4), -1.0 if pd.isna(t) else round(float(t), 4))
 
 
-def methods(i, F, P, best_set=None):
-    """{(method, setting, cut, t): points}; with best_set only the combinations."""
+def methods(i, F, P, best_set=None, fine=None):
+    """{(method, setting, cut, t): points}; with best_set only the combinations; with fine ({combo: cuts}) the fine
+    stage: V_mix2 at FINE_T and the combinations at FINE_T_COMBO x the given cuts."""
     out = {}
     mp, mprob = P[f"{MODEL}_{i}_pts"], P[f"{MODEL}_{i}_prob"]
+    if fine is not None:
+        for t in FINE_T:
+            out[(MODEL, "", np.nan, t)] = mp[mprob >= t]
+        pts, rel = F[f"{best_set}_{i}_pts"], F[f"{best_set}_{i}_rel"]
+        for combo, cuts in fine.items():
+            for c in cuts:
+                fc = pts[rel >= c]
+                for t in FINE_T_COMBO:
+                    m = mp[mprob >= t]
+                    out[(combo, best_set, c, t)] = m[near(m, fc)] if "AND" in combo else np.vstack([m, fc[~near(fc, m)]])
+        return out
     if best_set is None:
         for k in SETS:
             pts, rel = F[f"{k}_{i}_pts"], F[f"{k}_{i}_rel"]
@@ -68,13 +86,13 @@ def methods(i, F, P, best_set=None):
 
 
 def work(args):
-    i, r, od, vis_box, best_set, final = args
+    i, r, od, vis_box, best_set, final, fine = args
     img, pots, probe = load(r, od)
     g = bd.ground_truth(img, pots, bd.disk_radius(probe), vis_box)
     F, P = np.load("/mnt/data/fcunet/fcunet_peaks.npz"), np.load(E / "predictions.npz")
     rows = []
-    for (m, k, c, t), pts in methods(i, F, P, best_set).items():
-        if final is not None and _key(m, k, c, t) not in final:
+    for (m, k, c, t), pts in methods(i, F, P, best_set, fine).items():
+        if final is not None and (_key(m, k, c, t) not in final or (fine is None and m != "fcunet")):
             continue
         s = bd.score(g, pts)
         row = dict(pattern=i, method=m, setting=k, cut=c, t=t, **{q: s[q] for q in COLS})
@@ -85,8 +103,8 @@ def work(args):
     return rows
 
 
-def run(meta, od, vis, best_set=None, final=None):
-    jobs = [(i, r, od, vis, best_set, final) for i, r in meta.iterrows()]
+def run(meta, od, vis, best_set=None, final=None, fine=None):
+    jobs = [(i, r, od, vis, best_set, final, fine) for i, r in meta.iterrows()]
     with Pool(4) as pool:
         rows = [x for part in pool.imap_unordered(work, jobs, chunksize=4) for x in part]
     return pd.DataFrame(rows).join(meta[["part", "angle", "thickness"]], on="pattern")
@@ -114,13 +132,28 @@ def main():
         best_set = next(k for m, k, c, t in choose(sw) if m == "fcunet")
         sw = pd.concat([sw, run(meta, od, S["vis_box"], best_set=best_set)])
         sw.to_csv(E / "fcunet_sweep.csv.gz", index=False)
-    chosen = choose(sw)
-    best_set = next(k for m, k, c, t in chosen if m == "fcunet")
+    coarse = choose(sw)
+    best_set = next(k for m, k, c, t in coarse if m == "fcunet")
+    print("coarse:", sorted(coarse), flush=True)
+
+    # fine stage: V_mix2 threshold in steps of 0.01, combinations at the chosen cutoff and its grid neighbours
+    fine = {}
+    for m, k, c, t in coarse:
+        if m.startswith(MODEL + " "):
+            j = CUTS.index(c)
+            fine[m] = CUTS[max(0, j - 1): j + 2]
+    if (E / "fcunet_sweep_fine.csv.gz").exists():
+        sf = pd.read_csv(E / "fcunet_sweep_fine.csv.gz", keep_default_na=False, na_values=[""],
+                         dtype={"setting": str}).fillna({"setting": ""})
+    else:
+        sf = run(meta, od, S["vis_box"], best_set=best_set, fine=fine)
+        sf.to_csv(E / "fcunet_sweep_fine.csv.gz", index=False)
+    chosen = {x for x in coarse if x[0] == "fcunet"} | {x for x in choose(sf)}
     print("chosen:", sorted(chosen), flush=True)
 
     # final pass at the chosen settings, with intensity-weighted accuracy (mean over patterns)
     fin = pd.concat([run(meta, od, S["vis_box"], best_set=None, final=chosen),
-                     run(meta, od, S["vis_box"], best_set=best_set, final=chosen)])
+                     run(meta, od, S["vis_box"], best_set=best_set, final=chosen, fine=fine)])
     fin.to_csv(E / "fcunet_final_patterns.csv", index=False)
     out = []
     for (m, k, c, t), d in fin.groupby(["method", "setting", "cut", "t"], dropna=False):
