@@ -1,0 +1,21 @@
+{
+ "models": [
+  "V",
+  "V_mix2",
+  "V_mix4b"
+ ],
+ "thresholds": {
+  "V": 0.572,
+  "V_mix2": 0.48,
+  "V_mix4b": 0.46
+ },
+ "thicknesses": [
+  20.0,
+  40.0,
+  100.0,
+  200.0,
+  500.0
+ ],
+ "vis_box": 3,
+ "log_scale": 1000.0
+}

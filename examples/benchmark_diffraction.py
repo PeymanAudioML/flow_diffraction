@@ -90,15 +90,56 @@ def far_from(pts, centre, r):
     return np.hypot(*(pts - centre).T) > r
 
 
+# Ground-truth spot finder on dataPots:
+#   "py4dstem" (default): py4DSTEM get_maxima_2D, sub-pixel ('poly'), sigma 0.5, 2 % of the strongest peak,
+#       minSpacing 4, edgeBoundary 2, no peak cap; precomputed by make_gt_py4dstem.py (py4DSTEM environment)
+#       into GT_CACHE, looked up by the md5 of the dataPots slice.
+#   "skimage": peak_local_max, whole pixels, min_distance 3, 2 % (the ground truth of all results before 16 Nov 2026).
+# Choose with the environment variable DIFF_GT.
+import os
+GT_METHOD = os.environ.get("DIFF_GT", "py4dstem")
+GT_CACHE = os.environ.get("DIFF_GT_CACHE", "/mnt/data/gt_py4dstem")
+_GT_INDEX, _GT_NPZ = None, {}
+
+
+def py4dstem_peaks(gt):
+    """Precomputed py4DSTEM spots of one dataPots slice -> (points (n, 2) float row/col, weak 1-2 % peaks (k, 2))."""
+    global _GT_INDEX
+    import hashlib
+    if _GT_INDEX is None:
+        idx = Path(GT_CACHE) / "index.json"
+        if not idx.exists():
+            raise FileNotFoundError(f"{idx} missing: run make_gt_py4dstem.py in the py4DSTEM environment "
+                                    "(or set DIFF_GT=skimage)")
+        _GT_INDEX = json.loads(idx.read_text())["patterns"]
+    key = hashlib.md5(np.ascontiguousarray(gt, dtype=np.float32).tobytes()).hexdigest()
+    if key not in _GT_INDEX:
+        raise KeyError("dataPots slice not in the py4DSTEM ground-truth cache: run make_gt_py4dstem.py for this data "
+                       "(or set DIFF_GT=skimage)")
+    path, ti = _GT_INDEX[key]
+    if path not in _GT_NPZ:
+        _GT_NPZ.clear()                                   # keep one simulation's file open at a time
+        _GT_NPZ[path] = dict(np.load(Path(GT_CACHE) / path))
+    z = _GT_NPZ[path]
+    return z[f"t{ti}_points"].astype(float), z[f"t{ti}_weak"].astype(float)
+
+
 def ground_truth(img, gt, r, vis_box):
+    """Spots of one pattern. points: (n, 2) row/col (sub-pixel with py4DSTEM, whole pixels with skimage), direct
+    beam (BEAM_R px) removed; visible: 3 x 3 (vis_box) maximum of dataMeas >= FLOOR_REL of its maximum; weak: the
+    1-2 % peaks."""
     beam = beam_centre(img)
-    points = peak_local_max(gt, min_distance=3, threshold_rel=GT_REL, exclude_border=False)
+    if GT_METHOD == "py4dstem":
+        points, weak = py4dstem_peaks(gt)
+    else:
+        points = peak_local_max(gt, min_distance=3, threshold_rel=GT_REL, exclude_border=False)
+        peaks_1pct = peak_local_max(gt, min_distance=3, threshold_rel=GT_REL / 2, exclude_border=False)
+        weak = peaks_1pct[gt[tuple(peaks_1pct.T)] < gt[tuple(points.T)].min()] if len(points) else peaks_1pct
     points = points[far_from(points, beam, BEAM_R)]
     floor = img.max() * FLOOR_REL
-    visible = maximum_filter(img, size=vis_box)[points[:, 0], points[:, 1]] >= floor
+    pix = np.clip(np.round(points).astype(int), 0, np.array(img.shape) - 1)
+    visible = maximum_filter(img, size=vis_box)[pix[:, 0], pix[:, 1]] >= floor
     reachable = far_from(points, beam, r + 3)       # outside the beam mask used by ring correlation
-    peaks_1pct = peak_local_max(gt, min_distance=3, threshold_rel=GT_REL / 2, exclude_border=False)
-    weak = peaks_1pct[gt[tuple(peaks_1pct.T)] < gt[tuple(points.T)].min()] if len(points) else peaks_1pct
     spacing = float(np.median(cKDTree(points).query(points, k=2)[0][:, 1])) if len(points) > 1 else np.nan
     return dict(beam=beam, points=points, visible=visible, reachable=reachable, floor=floor, weak=weak, spacing=spacing)
 
@@ -107,7 +148,7 @@ def local_contrast(img, points, spacing, window=2.0, pct=20, floor=None):
     """3 x 3 maximum of dataMeas at each point divided by the local background: the pct-th percentile of dataMeas
     in a square window of half-width window * spacing around the point. Zero backgrounds are replaced by
     floor * 1e-3 so that points on a dark background get a large (finite) contrast."""
-    points = np.asarray(points, int).reshape(-1, 2)
+    points = np.clip(np.round(np.asarray(points, float)).astype(int).reshape(-1, 2), 0, np.array(img.shape) - 1)
     hw = max(1, int(round(window * spacing)))
     peak = maximum_filter(img, size=3)[points[:, 0], points[:, 1]]
     bg = np.array([np.percentile(img[max(0, y - hw):y + hw + 1, max(0, x - hw):x + hw + 1], pct) for y, x in points])
