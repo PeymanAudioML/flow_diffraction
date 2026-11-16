@@ -12,6 +12,7 @@ Step 2: py4DSTEM's get_maxima_2D on the prediction (the find_Bragg_disks_aiml pe
 at a low cutoff (minRelativeIntensity 0.002); every peak keeps its relative intensity so that the cutoff can be
 tuned afterwards (score_fcunet_sim93.py). -> /mnt/data/fcunet/fcunet_peaks.npz (188 MB, not in git)
 """
+import os
 import sys
 from pathlib import Path
 
@@ -21,9 +22,10 @@ import numpy as np
 import pandas as pd
 
 R = Path(__file__).resolve().parent / "diffraction_runs"
-E = R / "sim93_eval"
+E = Path(os.environ.get("SIM93_DIR", R / "sim93_eval"))     # another pattern list, e.g. sim93_eval/t60 (thick_sim93.py)
 NEW = Path("/mnt/data/sim_diffraction_gdrive")
-OUT = Path("/mnt/data/fcunet")
+MODEL_DIR = Path("/mnt/data/fcunet")                          # py4DSTEM caches the weights in MODEL_DIR/tmp
+OUT = MODEL_DIR if "SIM93_DIR" not in os.environ else E
 NUM_ATTEMPTS = 5
 BATCH = 16
 LOW = 0.002
@@ -45,11 +47,10 @@ def load(r, od):
 
 
 def predict(meta):
-    import os
     import tensorflow as tf
     from py4DSTEM.braggvectors.diskdetection_aiml import _get_latest_model
     cwd = os.getcwd()
-    os.chdir(OUT)                                    # the model is cached in ./tmp
+    os.chdir(MODEL_DIR)                              # the model is cached in ./tmp
     model = _get_latest_model()
     os.chdir(cwd)
     od = old_dirs()
